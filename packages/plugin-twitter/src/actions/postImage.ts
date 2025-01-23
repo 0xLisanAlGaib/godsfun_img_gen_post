@@ -64,32 +64,21 @@ async function composeTweetWithImage(
 
 async function getLatestImage(imagePath: string): Promise<string | null> {
     try {
-        elizaLogger.log("Looking for images in:", imagePath);
         const files = fs.readdirSync(imagePath);
-        elizaLogger.log("Found files:", files);
-
-        const imageFiles = files.filter((file) =>
-            /\.(jpg|jpeg|png|gif)$/i.test(file)
+        const imageFiles = files.filter(
+            (file) =>
+                // Only look at files generated in last minute
+                file.startsWith("generated_") &&
+                Date.now() - parseInt(file.split("_")[1]) < 60000
         );
 
-        if (imageFiles.length === 0) {
-            elizaLogger.error("No image files found in the directory");
-            return null;
+        if (imageFiles.length > 0) {
+            // Get most recent
+            return path.join(imagePath, imageFiles[imageFiles.length - 1]);
         }
-
-        const imageStats = imageFiles.map((file) => ({
-            file,
-            mtime: fs.statSync(path.join(imagePath, file)).mtime,
-        }));
-
-        const latestImage = imageStats.sort(
-            (a, b) => b.mtime.getTime() - a.mtime.getTime()
-        )[0];
-
-        elizaLogger.log("Found latest image:", latestImage.file);
-        return path.join(imagePath, latestImage.file);
+        return null;
     } catch (error) {
-        elizaLogger.error("Error getting latest image:", error);
+        elizaLogger.error("Error finding latest image:", error);
         return null;
     }
 }
@@ -182,8 +171,22 @@ async function postImageTweet(
         elizaLogger.log("Attempting to send tweet with image:", imagePath);
         elizaLogger.log("Tweet content:", tweetContent);
 
-        // Read image file as buffer
-        const imageBuffer = fs.readFileSync(imagePath);
+        // Handle both local files and URLs
+        let imageBuffer: Buffer;
+        if (imagePath.startsWith('http')) {
+            // Fetch image from URL
+            elizaLogger.log("Fetching image from URL:", imagePath);
+            const response = await fetch(imagePath);
+            if (!response.ok) {
+                elizaLogger.error("Failed to fetch image from URL:", response.statusText);
+                return false;
+            }
+            imageBuffer = Buffer.from(await response.arrayBuffer());
+        } else {
+            // Read local file
+            elizaLogger.log("Reading local image file:", imagePath);
+            imageBuffer = fs.readFileSync(imagePath);
+        }
 
         try {
             // First upload the media
@@ -275,25 +278,14 @@ export const postImageAction: Action = {
         try {
             let imagePath: string | null = null;
 
-            // Check if we need to generate a new image
-            if (
-                message.content.text.toLowerCase().includes("generate") ||
-                message.content.text.toLowerCase().includes("create")
-            ) {
-                elizaLogger.log("Starting image generation process");
-                imagePath = await generateNewImage(runtime, message, state);
-                if (!imagePath) {
-                    elizaLogger.error("Failed to generate image");
-                    return false;
-                }
-            } else {
-                // Get the latest image from directory
-                const imagesDir = getGeneratedImagesPath();
-                imagePath = await getLatestImage(imagesDir);
+            // First check if we have an image path in state from the provider
+            if (state && typeof state.imagePath === "string") {
+                imagePath = state.imagePath;
+                elizaLogger.log("Using image path from state:", imagePath);
             }
 
             if (!imagePath) {
-                elizaLogger.error("No image found to post");
+                elizaLogger.error("No image path found in state");
                 return false;
             }
 

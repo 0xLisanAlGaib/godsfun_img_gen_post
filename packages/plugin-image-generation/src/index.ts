@@ -13,6 +13,7 @@ import fs from "fs";
 import path from "path";
 import { validateImageGenConfig } from "./environment";
 import { ImageGenerationState } from "./types";
+import { uploadGeneratedImage } from './utils/supabase';
 
 export function saveBase64Image(base64Data: string, filename: string): string {
     // Create generatedImages directory if it doesn't exist
@@ -263,50 +264,28 @@ Ensure that your prompt is detailed, vivid, and incorporates all the elements me
                     ? await saveHeuristImage(image, filename)
                     : saveBase64Image(image, filename);
 
-
                 elizaLogger.log(`Processing image ${i + 1}:`, filename);
 
-                //just dont even add a caption or a description just have it generate & send
-                /*
-                try {
-                    const imageService = runtime.getService(ServiceType.IMAGE_DESCRIPTION);
-                    if (imageService && typeof imageService.describeImage === 'function') {
-                        const caption = await imageService.describeImage({ imageUrl: filepath });
-                        captionText = caption.description;
-                        captionTitle = caption.title;
-                    }
-                } catch (error) {
-                    elizaLogger.error("Caption generation failed, using default caption:", error);
-                }*/
-
-                const _caption = "...";
-                /*= await generateCaption(
-                    {
-                        imageUrl: image,
-                    },
-                    runtime
-                );*/
-
-                res.push({ image: filepath, caption: "..." }); //caption.title });
-
-                elizaLogger.log(
-                    `Generated caption for image ${i + 1}:`,
-                    "..." //caption.title
-                );
-                //res.push({ image: image, caption: caption.title });
+                // Upload to Supabase
+                const uploadResult = await uploadGeneratedImage(filepath, message.content.text);
+                if (uploadResult) {
+                    elizaLogger.log("Image uploaded to Supabase successfully:", uploadResult);
+                } else {
+                    elizaLogger.error("Failed to upload image to Supabase");
+                }
 
                 callback(
                     {
-                        text: "...", //caption.description,
+                        text: "...",
                         attachments: [
                             {
-                                id: crypto.randomUUID(),
-                                url: filepath,
+                                id: uploadResult?.id || crypto.randomUUID(),
+                                url: uploadResult?.storage_path || filepath,
                                 title: "Generated image",
                                 source: "imageGeneration",
-                                description: "...", //caption.title,
-                                text: "...", //caption.description,
-                                contentType: "image/png",
+                                description: uploadResult ? `Supabase storage: ${uploadResult.storage_path}` : "...",
+                                text: "...",
+                                contentType: "image/png"
                             },
                         ],
                     },
