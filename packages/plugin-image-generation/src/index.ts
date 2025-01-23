@@ -12,6 +12,7 @@ import { generateImage } from "@elizaos/core";
 import fs from "fs";
 import path from "path";
 import { validateImageGenConfig } from "./environment";
+import { ImageGenerationState } from "./types";
 
 export function saveBase64Image(base64Data: string, filename: string): string {
     // Create generatedImages directory if it doesn't exist
@@ -128,7 +129,7 @@ const imageGeneration: Action = {
 
         const CONTENT = message.content.text;
         const IMAGE_SYSTEM_PROMPT = `You are an expert in writing prompts for AI art generation. You excel at creating detailed and creative visual descriptions. Incorporating specific elements naturally. Always aim for clear, descriptive language that generates a creative picture. Your output should only contain the description of the image contents, but NOT an instruction like "create an image that..."`;
-        const STYLE = "futuristic with vibrant colors";
+        const STYLE = "cinematic, realistic, epic";
 
         const IMAGE_PROMPT_INPUT = `You are tasked with generating an image prompt based on a content and a specified style.
             Your goal is to create a detailed and vivid image prompt that captures the essence of the content while incorporating an appropriate subject based on your analysis of the content.\n\nYou will be given the following inputs:\n<content>\n${CONTENT}\n</content>\n\n<style>\n${STYLE}\n</style>\n\nA good image prompt consists of the following elements:\n\n
@@ -249,10 +250,8 @@ Ensure that your prompt is detailed, vivid, and incorporates all the elements me
         );
 
         if (images.success && images.data && images.data.length > 0) {
-            elizaLogger.log(
-                "Image generation successful, number of images:",
-                images.data.length
-            );
+            elizaLogger.log("Image generation successful");
+
             for (let i = 0; i < images.data.length; i++) {
                 const image = images.data[i];
 
@@ -263,6 +262,7 @@ Ensure that your prompt is detailed, vivid, and incorporates all the elements me
                 const filepath = image.startsWith("http")
                     ? await saveHeuristImage(image, filename)
                     : saveBase64Image(image, filename);
+
 
                 elizaLogger.log(`Processing image ${i + 1}:`, filename);
 
